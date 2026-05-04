@@ -4,6 +4,8 @@
 
 **Status:** research scaffold. Smoke tests pass. The full pre-registered experiment has *not* been run yet. We're publishing the code so the community can critique the design before pilot compute is spent.
 
+**Mirror:** Hugging Face — https://huggingface.co/Shkhina-AI-Labs/slow-mode-workspace
+
 ---
 
 ## Honest positioning
