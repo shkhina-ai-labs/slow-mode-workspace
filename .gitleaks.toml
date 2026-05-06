@@ -1,0 +1,40 @@
+# Gitleaks config — Shkhina AI Labs default.
+# Inherits the default ruleset and adds an allowlist for known false positives.
+# https://github.com/gitleaks/gitleaks#configuration
+
+[extend]
+useDefault = true
+
+[allowlist]
+description = "Files and patterns that are safe to ignore"
+
+paths = [
+    # Vendored / lock files
+    '''package-lock\.json''',
+    '''yarn\.lock''',
+    '''poetry\.lock''',
+    '''.*\.min\.(js|css)''',
+    '''dist/.*''',
+    '''build/.*''',
+    '''node_modules/.*''',
+    '''venv/.*''',
+    '''\.venv/.*''',
+
+    # Documentation that may contain example tokens / placeholders
+    '''README\.md''',
+    '''CLAUDE\.md''',
+    '''docs/.*\.md''',
+    '''.github/copilot-instructions\.md''',
+    '''.*\.example''',
+    '''.*\.template''',
+]
+
+regexes = [
+    # Common placeholder patterns
+    '''(?i)your[_-]?(api|secret|token|key)[_-]?here''',
+    '''(?i)example[_-]?(api|secret|token|key)''',
+    '''(?i)placeholder''',
+    '''(?i)changeme''',
+    '''(?i)dummy[_-]?(api|secret|token|key)''',
+    '''xxx+''',
+]

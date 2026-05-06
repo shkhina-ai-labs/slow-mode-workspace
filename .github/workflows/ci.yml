@@ -1,0 +1,95 @@
+name: CI
+
+on:
+  pull_request:
+    branches: [main, master, dev, server]
+  push:
+    branches: [main, master, dev, server]
+
+# Cancel in-progress runs on the same branch when a new push arrives.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+  pull-requests: read
+
+jobs:
+  check-backend:
+    name: check-backend
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      # Lightweight check that runs without installing deps. Heavy ML deps
+      # (vLLM, transformers, etc.) can take 10+ minutes to install on a
+      # CI runner — not worth the cost for the gate this provides.
+      # AST-parse every .py file to catch syntax errors that would crash
+      # the service on startup.
+      - name: AST parse + compile check (no deps needed)
+        run: |
+          python << 'PYEOF'
+          import ast, pathlib, sys
+          errors = []
+          checked = 0
+          skipped = 0
+          skip_substrings = ('venv', 'node_modules', '.venv', 'site-packages',
+                             'build/', 'dist/', '.tox', '__pycache__',
+                             'backend/cache/', '/cache/')
+          for p in pathlib.Path('.').rglob('*.py'):
+              if any(part.startswith('.') for part in p.parts):
+                  continue
+              if any(s in str(p) for s in skip_substrings):
+                  skipped += 1
+                  continue
+              try:
+                  ast.parse(p.read_text(encoding='utf-8'))
+                  checked += 1
+              except SyntaxError as e:
+                  errors.append(f'{p}: line {e.lineno}: {e.msg}')
+              except (UnicodeDecodeError, IsADirectoryError, FileNotFoundError, PermissionError, OSError):
+                  # Tolerate broken symlinks, missing submodule files,
+                  # permission issues — the gate is syntax correctness
+                  # of files we can actually read.
+                  skipped += 1
+          if errors:
+              print(f'Found {len(errors)} syntax errors:')
+              for e in errors:
+                  print('  ' + e)
+              sys.exit(1)
+          print(f'OK — {checked} Python files parse cleanly ({skipped} skipped)')
+          PYEOF
+
+  secrets-scan:
+    name: secrets-scan
+    runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      # Install the open-source gitleaks binary directly. We don't use
+      # gitleaks-action@v2 because it requires a paid license for org repos.
+      # The MIT-licensed CLI is free to use anywhere.
+      - name: Install gitleaks
+        run: |
+          GL_VERSION="8.21.2"
+          curl -sSL "https://github.com/gitleaks/gitleaks/releases/download/v${GL_VERSION}/gitleaks_${GL_VERSION}_linux_x64.tar.gz" \
+            | sudo tar -xz -C /usr/local/bin gitleaks
+          gitleaks version
+
+      - name: Scan PR diff for secrets
+        run: |
+          gitleaks detect \
+            --source . \
+            --config .gitleaks.toml \
+            --redact \
+            --verbose \
+            --no-banner \
+            --log-opts "${{ github.event.pull_request.base.sha }}..${{ github.event.pull_request.head.sha }}"
